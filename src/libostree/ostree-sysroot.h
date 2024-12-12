@@ -161,7 +161,8 @@ typedef struct
 {
   gboolean do_postclean;
   gboolean disable_auto_early_prune;
-  gboolean unused_bools[7];
+  gboolean load_kexec;
+  gboolean unused_bools[6];
   int unused_ints[7];
   gpointer unused_ptrs[7];
 } OstreeSysrootWriteDeploymentsOpts;
@@ -259,6 +260,7 @@ typedef enum
   OSTREE_SYSROOT_SIMPLE_WRITE_DEPLOYMENT_FLAGS_NO_CLEAN = (1 << 2),
   OSTREE_SYSROOT_SIMPLE_WRITE_DEPLOYMENT_FLAGS_RETAIN_PENDING = (1 << 3),
   OSTREE_SYSROOT_SIMPLE_WRITE_DEPLOYMENT_FLAGS_RETAIN_ROLLBACK = (1 << 4),
+  OSTREE_SYSROOT_SIMPLE_WRITE_DEPLOYMENT_FLAGS_LOAD_KEXEC = (1 << 5),
 } OstreeSysrootSimpleWriteDeploymentFlags;
 
 _OSTREE_PUBLIC

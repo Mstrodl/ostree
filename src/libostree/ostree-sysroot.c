@@ -1913,6 +1913,8 @@ ostree_sysroot_simple_write_deployment (OstreeSysroot *sysroot, const char *osna
                                         OstreeSysrootSimpleWriteDeploymentFlags flags,
                                         GCancellable *cancellable, GError **error)
 {
+  const gboolean load_kexec
+      = (flags & OSTREE_SYSROOT_SIMPLE_WRITE_DEPLOYMENT_FLAGS_LOAD_KEXEC) > 0;
   const gboolean postclean = (flags & OSTREE_SYSROOT_SIMPLE_WRITE_DEPLOYMENT_FLAGS_NO_CLEAN) == 0;
   const gboolean make_default
       = !((flags & OSTREE_SYSROOT_SIMPLE_WRITE_DEPLOYMENT_FLAGS_NOT_DEFAULT) > 0);
@@ -1987,7 +1989,7 @@ ostree_sysroot_simple_write_deployment (OstreeSysroot *sysroot, const char *osna
   if (!added_new)
     g_ptr_array_add (new_deployments, g_object_ref (new_deployment));
 
-  OstreeSysrootWriteDeploymentsOpts write_opts = { .do_postclean = postclean };
+  OstreeSysrootWriteDeploymentsOpts write_opts = { .do_postclean = postclean, .load_kexec = load_kexec };
   if (!ostree_sysroot_write_deployments_with_options (sysroot, new_deployments, &write_opts,
                                                       cancellable, error))
     return FALSE;

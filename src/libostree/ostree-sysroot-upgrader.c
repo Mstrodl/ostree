@@ -601,6 +601,10 @@ ostree_sysroot_upgrader_deploy (OstreeSysrootUpgrader *self, GCancellable *cance
   /* Experimental flag to enable staging */
   gboolean stage = (self->flags & OSTREE_SYSROOT_UPGRADER_FLAGS_STAGE) > 0
                    || getenv ("OSTREE_EX_STAGE_DEPLOYMENTS") != NULL;
+  OstreeSysrootSimpleWriteDeploymentFlags write_deployment_flags = OSTREE_SYSROOT_SIMPLE_WRITE_DEPLOYMENT_FLAGS_NONE;
+  if ((self->flags & OSTREE_SYSROOT_UPGRADER_FLAGS_LOAD_KEXEC) > 0) {
+    write_deployment_flags |= OSTREE_SYSROOT_SIMPLE_WRITE_DEPLOYMENT_FLAGS_LOAD_KEXEC;
+  }
   if (stage)
     {
       if (!ostree_sysroot_stage_tree (self->sysroot, self->osname, self->new_revision, self->origin,
@@ -616,7 +620,7 @@ ostree_sysroot_upgrader_deploy (OstreeSysrootUpgrader *self, GCancellable *cance
         return FALSE;
 
       if (!ostree_sysroot_simple_write_deployment (self->sysroot, self->osname, new_deployment,
-                                                   self->merge_deployment, 0, cancellable, error))
+                                                   self->merge_deployment, write_deployment_flags, cancellable, error))
         return FALSE;
     }
 
@@ -635,6 +639,8 @@ ostree_sysroot_upgrader_flags_get_type (void)
                 "OSTREE_SYSROOT_UPGRADER_FLAGS_IGNORE_UNCONFIGURED", "ignore-unconfigured" },
               { OSTREE_SYSROOT_UPGRADER_FLAGS_STAGE, "OSTREE_SYSROOT_UPGRADER_FLAGS_STAGE",
                 "stage" },
+              { OSTREE_SYSROOT_UPGRADER_FLAGS_LOAD_KEXEC, "OSTREE_SYSROOT_UPGRADER_FLAGS_LOAD_KEXEC",
+                "kexec" },
               { 0, NULL, NULL } };
       GType g_define_type_id
           = g_flags_register_static (g_intern_static_string ("OstreeSysrootUpgraderFlags"), values);

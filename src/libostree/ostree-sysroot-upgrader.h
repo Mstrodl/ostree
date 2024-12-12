@@ -36,6 +36,7 @@ G_BEGIN_DECLS
  * unconfigured-state key
  * @OSTREE_SYSROOT_UPGRADER_FLAGS_STAGE: Enable "staging" (finalization at shutdown); recommended
  *    (Since: 2021.4)
+ * @OSTREE_SYSROOT_UPGRADER_FLAGS_LOAD_KEXEC: Enable loading the new deployment into kexec
  *
  * Flags controlling operation of an #OstreeSysrootUpgrader.
  */
@@ -44,6 +45,7 @@ typedef enum
   OSTREE_SYSROOT_UPGRADER_FLAGS_NONE = (1 << 0),
   OSTREE_SYSROOT_UPGRADER_FLAGS_IGNORE_UNCONFIGURED = (1 << 1),
   OSTREE_SYSROOT_UPGRADER_FLAGS_STAGE = (1 << 2),
+  OSTREE_SYSROOT_UPGRADER_FLAGS_LOAD_KEXEC = (1 << 3),
 } OstreeSysrootUpgraderFlags;
 
 _OSTREE_PUBLIC
