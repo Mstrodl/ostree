@@ -23,6 +23,11 @@
 #include <gio/gunixinputstream.h>
 #include <gio/gunixoutputstream.h>
 #include <glib-unix.h>
+
+#ifdef HAVE_LIBMOUNT
+#include <libmount.h>
+#endif
+
 #include <linux/kexec.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -4287,55 +4292,48 @@ ostree_sysroot_deployment_prepare_next_root (OstreeSysroot *self, OstreeDeployme
      we have to recreate the mount at a different location. */
 
   /* Read in mounted FSes */
-  g_autofree gchar *mounts_contents = NULL;
-  if (!g_file_get_contents ("/proc/self/mounts", &mounts_contents, NULL, error))
-    return FALSE;
-  g_auto (GStrv) mounts = g_strsplit (mounts_contents, "\n", -1);
-  for (char **iter = mounts; iter && *iter; iter++)
+  struct libmnt_table *tb = mnt_new_table_from_file("/proc/self/mountinfo");
+  if (!tb)
     {
-      const gchar *mount_text = *iter;
-      g_auto (GStrv) mount_fields = g_strsplit (mount_text, " ", 6);
-      /* Validate all 6 tokens are present */
-      for (int i = 0; i < 6; ++i)
-        {
-          if (mount_fields[i] == NULL)
-            {
-              ot_journal_print (LOG_WARNING, "Mount %s is missing a field at %d!", mount_text, i);
-              continue;
-            }
-        }
-
-      /* Only care about /sysroot */
-      if (!g_str_equal (mount_fields[1], "/sysroot"))
-        continue;
-
-      if (!glnx_shutil_mkdir_p_at (AT_FDCWD, "/run/nextroot", 0755, cancellable, error))
-        return FALSE;
-
-      if (mount (mount_fields[0], "/run/nextroot", mount_fields[2], MS_SILENT, NULL))
-        {
-          glnx_prefix_error (error, "failed to mount /run/nextroot");
-          goto err_unlink;
-        }
-
-      /* Found it, and mounted it! */
-      goto end_loop;
+      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                           "Couldn't read /proc/self/mountinfo!");
+      return FALSE;
+    }
+	struct libmnt_cache *cache = mnt_new_cache ();
+	mnt_table_set_cache (tb, cache);
+  struct libmnt_fs *fs = mnt_table_find_target (tb, "/sysroot", MNT_ITER_BACKWARD);
+  if (!fs)
+    {
+      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                           "Couldn't find mount for /sysroot!");
+      goto err_table;
     }
 
-  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                       "Couldn't find mountpoint for /sysroot!");
-  return FALSE;
+  const char *srcpath = mnt_fs_get_srcpath (fs);
+  if (!srcpath)
+    {
+      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                           "Couldn't resolve mount source for /sysroot!");
+      goto err_table;
+      return FALSE;
+    }
+  const char *fstype = mnt_fs_get_fstype (fs);
+  const char *options = mnt_fs_get_fs_options (fs);
 
-end_loop:
+  /* Ask ot-prep-root to mount our rootfs at /run/nextroot under init's mountns */
+  g_auto(GStrv) env = g_get_environ ();
+  g_autofree char *mount_descriptor =
+    g_strdup_printf("%s\t%s\t%s", srcpath, fstype, options);
+  env = g_environ_setenv (env, "OSTREE_PREPARE_ROOT_MOUNT", mount_descriptor, TRUE);
+  env = g_environ_setenv (env, "OSTREE_PREPARE_ROOT_MOUNTNS", "1", TRUE);
 
-  /* At this point, /sysroot is mounted at /run/nextroot, do the pivot from there: */
   g_ptr_array_add (args, "/usr/lib/ostree/ostree-prepare-root");
   g_ptr_array_add (args, "/run/nextroot");
   g_ptr_array_add (args, kargs);
   g_ptr_array_add (args, NULL);
 
-  if (!g_spawn_sync (NULL, (char **)args->pdata, NULL, 0, NULL, NULL, NULL, NULL, &exit_status,
-                     error))
+  if (!g_spawn_sync (NULL, (char **)args->pdata, env, 0, NULL,
+                     NULL, NULL, NULL, &exit_status, error))
     goto err_unlink;
 
   if (!g_spawn_check_exit_status (exit_status, error))
@@ -4351,6 +4349,9 @@ err_unlink:
   if (unlinkat (AT_FDCWD, "/run/nextroot", AT_REMOVEDIR) < 0)
     ot_journal_print (LOG_WARNING,
                       "Couldn't remove /run/nextroot while cleaning up from failed next root");
+
+err_table:
+  mnt_unref_table (tb);
 
   return FALSE;
 }

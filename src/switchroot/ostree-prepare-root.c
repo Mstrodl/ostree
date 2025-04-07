@@ -283,6 +283,19 @@ main (int argc, char *argv[])
   if (!kernel_cmdline)
     errx (EXIT_FAILURE, "Failed to read kernel cmdline");
 
+  if (g_getenv("OSTREE_PREPARE_ROOT_MOUNTNS"))
+    {
+      glnx_autofd int mountns = open ("/proc/1/ns/mnt", O_RDONLY | O_NOCTTY | O_CLOEXEC);
+      if (mountns < 0) {
+        glnx_throw_errno_prefix (&error, "open_mnt");
+        errx (EXIT_FAILURE, "Failed to open init's mountns: %s", error->message);
+      }
+      if (setns (mountns, CLONE_NEWNS) < 0) {
+        glnx_throw_errno_prefix (&error, "setns");
+        errx (EXIT_FAILURE, "Failed to set mountns: %s", error->message);
+      }
+    }
+
   // Since several APIs want to operate in terms of file descriptors, let's
   // open the initramfs now.  Currently this is just used for the config parser.
   glnx_autofd int initramfs_rootfs_fd = -1;
@@ -323,6 +336,25 @@ main (int argc, char *argv[])
   const char *root_mountpoint = realpath (root_arg, NULL);
   if (root_mountpoint == NULL)
     err (EXIT_FAILURE, "realpath(\"%s\")", root_arg);
+
+  const gchar *mount_descriptor = g_getenv("OSTREE_PREPARE_ROOT_MOUNT");
+  if (mount_descriptor)
+    {
+      g_auto (GStrv) mount_descriptor_fields = g_strsplit (mount_descriptor, "\t", 3);
+      for (int i = 0; i < 3; ++i) {
+        if (!mount_descriptor_fields[i]) {
+          errx (EXIT_FAILURE, "Malformed OSTREE_PREPARE_ROOT_MOUNT");
+        }
+      }
+      const char *mnt_srcpath = mount_descriptor_fields[0];
+      const char *fstype = mount_descriptor_fields[1];
+      const char *mnt_options = mount_descriptor_fields[2];
+      if (mount (mnt_srcpath, root_mountpoint, fstype, MS_SILENT, mnt_options)) {
+        glnx_throw_errno_prefix (&error, "mount");
+        errx (EXIT_FAILURE, "Couldn't mount %s: %s", mnt_srcpath, error->message);
+      }
+    }
+
   g_autofree char *deploy_path = resolve_deploy_path (kernel_cmdline, root_mountpoint);
   const char *deploy_directory_name = glnx_basename (deploy_path);
   // Note that realpath() should have stripped any trailing `/` which shouldn't
